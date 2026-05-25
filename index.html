@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>DataPrep AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0f11;--surface:#16181d;--surface2:#1c1f26;
+  --border:#2a2d36;--border2:#363a47;
+  --accent:#00e5a0;--accent-dim:#00b87c;--accent-bg:rgba(0,229,160,0.07);
+  --warn:#ffb347;--warn-bg:rgba(255,179,71,0.08);
+  --danger:#ff5c5c;--danger-bg:rgba(255,92,92,0.08);
+  --info:#5c9eff;--info-bg:rgba(92,158,255,0.08);
+  --purple:#a78bfa;--purple-bg:rgba(167,139,250,0.08);
+  --text:#e8eaf0;--muted:#6b7280;--muted2:#4b5260;
+  --mono:'Space Mono',monospace;--sans:'Syne',sans-serif;
+  --radius:6px;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 16px 80px}
+
+/* ── AUTH ───────────────────────────────────────────────────────── */
+#authScreen{width:100%;max-width:420px;display:none;flex-direction:column;align-items:center}
+#authScreen.visible{display:flex}
+.auth-logo{font-family:var(--sans);font-weight:800;font-size:2rem;letter-spacing:-.5px;margin-bottom:6px}
+.auth-logo span{color:var(--accent)}
+.auth-tagline{font-size:.65rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:36px}
+.auth-card{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.auth-tabs{display:flex;border-bottom:1px solid var(--border)}
+.auth-tab{flex:1;padding:13px;font-family:var(--mono);font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border:none;background:none;color:var(--muted);cursor:pointer;transition:background .15s,color .15s;border-bottom:2px solid transparent}
+.auth-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--accent-bg)}
+.auth-form{padding:24px;display:flex;flex-direction:column;gap:16px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.field input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;transition:border-color .15s}
+.field input:focus{border-color:var(--accent)}
+.field input::placeholder{color:var(--muted2)}
+.btn-auth{width:100%;padding:12px;background:var(--accent);color:#060809;font-family:var(--mono);font-size:.82rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border:none;border-radius:var(--radius);cursor:pointer;transition:background .18s;margin-top:4px}
+.btn-auth:hover{background:#1ffcb4}
+.btn-auth:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+.auth-error{padding:10px 14px;background:var(--danger-bg);border:1px solid var(--danger);border-radius:var(--radius);color:#ff8080;font-size:.74rem;line-height:1.5;display:none}
+.auth-error.visible{display:block}
+.auth-success{padding:10px 14px;background:var(--accent-bg);border:1px solid var(--accent-dim);border-radius:var(--radius);color:var(--accent);font-size:.74rem;line-height:1.5;display:none}
+.auth-success.visible{display:block}
+.pw-strength{height:3px;border-radius:2px;background:var(--border);margin-top:4px;overflow:hidden}
+.pw-strength-fill{height:100%;border-radius:2px;width:0%;transition:width .25s,background .25s}
+
+/* ── APP SCREEN ─────────────────────────────────────────────────── */
+#appScreen{width:100%;display:none;flex-direction:column;align-items:center}
+#appScreen.visible{display:flex}
+
+header{width:100%;max-width:1100px;margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:18px;flex-wrap:wrap;gap:12px}
+.logo{font-family:var(--sans);font-weight:800;font-size:1.55rem;letter-spacing:-.5px}.logo span{color:var(--accent)}
+.tagline{font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mode-toggle{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex-shrink:0}
+.mode-btn{padding:9px 18px;font-family:var(--mono);font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border:none;background:none;color:var(--muted);cursor:pointer;transition:background .18s,color .18s;white-space:nowrap}
+.mode-btn.active{background:var(--accent);color:#060809}
+.user-chip{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:.7rem;color:var(--muted)}
+.user-chip .avatar{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#060809;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0}
+.btn-logout{padding:5px 12px;font-family:var(--mono);font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--border2);border-radius:4px;color:var(--muted);cursor:pointer;transition:color .15s,border-color .15s}
+.btn-logout:hover{color:var(--danger);border-color:var(--danger)}
+
+/* ── Groq settings bar ──────────────────────────────────────────── */
+.groq-bar{width:100%;max-width:1100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
+.groq-bar-header{padding:10px 18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:background .15s}
+.groq-bar-header:hover{background:var(--surface2)}
+.groq-bar-left{display:flex;align-items:center;gap:10px;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+.groq-dot{width:8px;height:8px;border-radius:50%;background:var(--muted2);flex-shrink:0;transition:background .2s,box-shadow .2s}
+.groq-dot.active{background:var(--purple);box-shadow:0 0 6px var(--purple)}
+.groq-label{color:var(--muted)}
+.groq-status{font-size:.65rem;color:var(--muted2);letter-spacing:.05em}
+.groq-chevron{font-size:.7rem;color:var(--muted);transition:transform .2s}
+.groq-chevron.open{transform:rotate(180deg)}
+.groq-body{display:none;padding:16px 18px;border-top:1px solid var(--border)}
+.groq-body.open{display:block}
+.groq-row{display:flex;gap:10px;align-items:flex-end}
+.groq-field{flex:1;display:flex;flex-direction:column;gap:5px}
+.groq-field label{font-size:.62rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.groq-field input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:.8rem;outline:none;transition:border-color .15s;width:100%}
+.groq-field input:focus{border-color:var(--purple)}
+.groq-field input::placeholder{color:var(--muted2)}
+.btn-groq-save{padding:9px 18px;background:var(--purple-bg);border:1px solid var(--purple);border-radius:var(--radius);color:var(--purple);font-family:var(--mono);font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap}
+.btn-groq-save:hover{background:var(--purple);color:#fff}
+.groq-hint{font-size:.63rem;color:var(--muted);margin-top:8px;line-height:1.5}
+.groq-hint a{color:var(--purple);text-decoration:none}
+.groq-hint a:hover{text-decoration:underline}
+
+/* ── Upload card ────────────────────────────────────────────────── */
+.upload-card{width:100%;max-width:1100px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
+.card-header{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:.68rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.card-body{padding:24px}
+#dropzone{border:2px dashed var(--border);border-radius:var(--radius);padding:44px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+#dropzone:hover,#dropzone.dragover{border-color:var(--accent);background:var(--accent-bg)}
+#dropzone .icon{font-size:2.2rem;margin-bottom:12px;display:block}
+#dropzone p{font-size:.82rem;color:var(--muted);line-height:1.7}
+#dropzone strong{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+#fileInput{display:none}
+.file-pill{display:inline-flex;align-items:center;gap:8px;background:var(--accent-bg);border:1px solid var(--accent-dim);border-radius:4px;padding:5px 12px;font-size:.76rem;color:var(--accent);margin-top:12px}
+.file-pill button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.95rem;padding:0 0 0 4px}
+.file-pill button:hover{color:var(--danger)}
+.btn-primary{width:100%;margin-top:18px;padding:13px;background:var(--accent);color:#060809;font-family:var(--mono);font-size:.82rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border:none;border-radius:var(--radius);cursor:pointer;transition:background .18s,transform .1s}
+.btn-primary:hover:not(:disabled){background:#1ffcb4}
+.btn-primary:active:not(:disabled){transform:scale(.99)}
+.btn-primary:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+.btn-outline{width:100%;padding:12px;background:transparent;color:var(--accent);font-family:var(--mono);font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;border:2px solid var(--accent);border-radius:var(--radius);cursor:pointer;transition:background .18s,color .18s;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn-outline:hover{background:var(--accent);color:#060809}
+.spinner-wrap{display:none;flex-direction:column;align-items:center;gap:14px;padding:32px 0 10px}
+.spinner-wrap.visible{display:flex}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner-label{font-size:.72rem;color:var(--muted);letter-spacing:.08em;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.error-banner{display:none;margin-top:16px;padding:11px 15px;background:var(--danger-bg);border:1px solid var(--danger);border-radius:var(--radius);color:#ff8080;font-size:.76rem;line-height:1.6}
+.error-banner.visible{display:block}
+
+/* ── Auto-clean results ─────────────────────────────────────────── */
+#results{display:none;margin-top:24px}
+.results-divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;font-size:.65rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.results-divider::before,.results-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center}
+.stat-box .num{font-family:var(--sans);font-weight:800;font-size:1.65rem;color:var(--accent);line-height:1;margin-bottom:3px}
+.stat-box .lbl{font-size:.62rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.table-wrap{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.table-title{padding:9px 15px;font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.76rem}
+th{text-align:left;padding:8px 15px;font-size:.62rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:8px 15px;border-bottom:1px solid rgba(42,45,54,.5);color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+td.mono-val{color:var(--accent)}
+td.method-val{color:var(--warn);font-size:.7rem}
+.empty-note{padding:13px 15px;font-size:.73rem;color:var(--muted);font-style:italic}
+.renamed-wrap{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.rename-list{padding:8px 10px}
+.rename-tag{display:inline-flex;align-items:center;gap:5px;background:var(--warn-bg);border:1px solid rgba(255,179,71,.3);border-radius:4px;padding:3px 9px;font-size:.7rem;margin:4px}
+.rename-tag .old{color:var(--muted);text-decoration:line-through}
+.rename-tag .new{color:var(--warn)}
+
+/* ══════════════════════════════════════════════════════════════════
+   AI SUMMARY CARD
+══════════════════════════════════════════════════════════════════ */
+.ai-summary-card{background:var(--surface);border:1px solid var(--purple);border-radius:var(--radius);overflow:hidden;margin-top:20px}
+.ai-summary-header{padding:11px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.ai-icon{font-size:1rem}
+.ai-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--purple)}
+.ai-model-tag{font-size:.6rem;color:var(--muted);background:var(--bg);border:1px solid var(--border2);border-radius:3px;padding:2px 7px;margin-left:auto}
+.ai-body{padding:18px 20px}
+.ai-thinking{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.75rem}
+.ai-thinking-dots span{display:inline-block;animation:blink 1.2s infinite}
+.ai-thinking-dots span:nth-child(2){animation-delay:.2s}
+.ai-thinking-dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:0}40%{opacity:1}}
+.ai-text{font-family:var(--sans);font-size:.88rem;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.ai-text strong,.ai-text b{color:var(--accent)}
+.ai-cursor{display:inline-block;width:2px;height:1em;background:var(--purple);vertical-align:text-bottom;animation:blink-cursor .7s step-end infinite;margin-left:2px}
+@keyframes blink-cursor{0%,100%{opacity:1}50%{opacity:0}}
+.ai-error{color:#ff8080;font-size:.78rem;padding:4px 0}
+.btn-regen{margin-top:14px;padding:8px 16px;background:var(--purple-bg);border:1px solid var(--purple);border-radius:var(--radius);color:var(--purple);font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .15s}
+.btn-regen:hover{background:var(--purple);color:#fff}
+
+/* ══════════════════════════════════════════════════════════════════
+   REVIEW MODE
+══════════════════════════════════════════════════════════════════ */
+#reviewPanel{display:none;width:100%;max-width:1100px}
+#reviewPanel.visible{display:flex;flex-direction:column;gap:16px}
+.review-layout{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.sheet-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.sheet-toolbar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sheet-title{font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;flex:1}
+.sheet-legend{display:flex;gap:10px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:.62rem;color:var(--muted)}
+.legend-dot{width:10px;height:10px;border-radius:2px}
+.legend-dot.null-dot{background:rgba(92,158,255,.4)}
+.legend-dot.ws-dot{background:rgba(255,179,71,.4)}
+.legend-dot.dup-dot{background:rgba(255,92,92,.25)}
+.legend-dot.rename-dot{background:rgba(0,229,160,.3)}
+.sheet-scroll{overflow:auto;max-height:540px}
+.sheet-table{border-collapse:collapse;font-size:.73rem;white-space:nowrap}
+.sheet-table th{position:sticky;top:0;background:#1a1d23;padding:7px 12px;text-align:left;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);border-right:1px solid var(--border2);z-index:2}
+.sheet-table th.has-change{color:var(--accent)}
+.sheet-table td{padding:6px 12px;border-bottom:1px solid var(--border2);border-right:1px solid rgba(42,45,54,.4);color:var(--text);position:relative;transition:background .12s}
+.sheet-table td:last-child,.sheet-table th:last-child{border-right:none}
+.sheet-table tr.dup-row td{background:rgba(255,92,92,.06)}
+.cell-null{background:rgba(92,158,255,.12)!important}
+.cell-ws{background:rgba(255,179,71,.12)!important}
+.cell-null.approved,.cell-ws.approved{background:rgba(0,229,160,.12)!important}
+.cell-null.rejected,.cell-ws.rejected{background:rgba(255,92,92,.07)!important;opacity:.65}
+.row-num{color:var(--muted2);font-size:.65rem;text-align:right;user-select:none;padding:6px 8px;border-right:1px solid var(--border2)!important;background:#13151a!important;min-width:36px}
+.change-badge{display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:5px;vertical-align:middle}
+.sidebar{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;position:sticky;top:20px}
+.sidebar-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sidebar-title{font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.sidebar-count{font-family:var(--sans);font-weight:800;font-size:1.1rem;color:var(--accent)}
+.sidebar-actions{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border)}
+.bulk-btn{flex:1;padding:7px;font-family:var(--mono);font-size:.64rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;border-radius:4px;border:1px solid var(--border2);cursor:pointer;transition:background .15s,color .15s;background:var(--surface2);color:var(--muted)}
+.bulk-btn.accept-all:hover{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.bulk-btn.reject-all:hover{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.change-list{max-height:380px;overflow-y:auto}
+.change-item{padding:10px 14px;border-bottom:1px solid var(--border2);display:flex;flex-direction:column;gap:5px;transition:background .12s}
+.change-item:hover{background:var(--surface2)}
+.change-item:last-child{border-bottom:none}
+.change-item.accept{background:rgba(0,229,160,.05)}
+.change-item.reject{background:rgba(255,92,92,.04);opacity:.7}
+.ci-top{display:flex;align-items:center;gap:7px}
+.ci-type{font-size:.6rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:3px}
+.ci-type.null_fill{background:var(--info-bg);color:var(--info)}
+.ci-type.whitespace{background:var(--warn-bg);color:var(--warn)}
+.ci-type.duplicate_row{background:var(--danger-bg);color:var(--danger)}
+.ci-type.col_rename{background:var(--accent-bg);color:var(--accent)}
+.ci-loc{font-size:.64rem;color:var(--muted);flex:1;text-align:right}
+.ci-reason{font-size:.65rem;color:var(--muted);line-height:1.5}
+.ci-diff{display:flex;align-items:center;gap:6px;font-size:.68rem}
+.ci-old{color:var(--danger);text-decoration:line-through;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-new{color:var(--accent);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-arrow{color:var(--muted2)}
+.ci-btns{display:flex;gap:5px;margin-top:2px}
+.ci-btn{flex:1;padding:5px 0;font-family:var(--mono);font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;border:1px solid var(--border2);cursor:pointer;transition:background .13s,color .13s,border-color .13s;background:var(--surface2);color:var(--muted)}
+.ci-btn.accept:hover,.ci-btn.accept.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.ci-btn.reject:hover,.ci-btn.reject.active{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.progress-bar-wrap{padding:10px 14px;border-top:1px solid var(--border)}
+.progress-labels{display:flex;justify-content:space-between;font-size:.62rem;color:var(--muted);margin-bottom:5px}
+.progress-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+.apply-wrap{padding:12px 14px;border-top:1px solid var(--border)}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media(max-width:780px){
+  .review-layout{grid-template-columns:1fr}
+  .sidebar{position:static}
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+  header{flex-wrap:wrap;gap:10px}
+  .header-right{flex-wrap:wrap;gap:8px}
+  .groq-row{flex-direction:column}
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-logo">DataPrep<span>AI</span></div>
+  <div class="auth-tagline">Automated CSV &amp; Excel Cleaning</div>
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin"    onclick="showAuthTab('login')">Sign In</button>
+      <button class="auth-tab"        id="tabRegister" onclick="showAuthTab('register')">Create Account</button>
+    </div>
+    <div id="loginForm" class="auth-form">
+      <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email"/></div>
+      <div class="field"><label>Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"/></div>
+      <div class="auth-error" id="loginError"></div>
+      <button class="btn-auth" id="loginBtn" onclick="doLogin()">Sign In</button>
+    </div>
+    <div id="registerForm" class="auth-form" style="display:none">
+      <div class="field"><label>Username</label><input type="text" id="regUsername" placeholder="yourname" autocomplete="username"/></div>
+      <div class="field"><label>Email</label><input type="email" id="regEmail" placeholder="you@example.com" autocomplete="email"/></div>
+      <div class="field">
+        <label>Password <span style="color:var(--muted);font-size:.6rem">(min 8 chars)</span></label>
+        <input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password" oninput="updateStrength(this.value)"/>
+        <div class="pw-strength"><div class="pw-strength-fill" id="pwStrengthFill"></div></div>
+      </div>
+      <div class="auth-error"   id="registerError"></div>
+      <div class="auth-success" id="registerSuccess"></div>
+      <button class="btn-auth" id="registerBtn" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP SCREEN -->
+<div id="appScreen">
+
+  <header>
+    <div>
+      <div class="logo">DataPrep<span>AI</span></div>
+      <div class="tagline" style="margin-top:3px">Automated CSV &amp; Excel Cleaning</div>
+    </div>
+    <div class="header-right">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeAuto"   onclick="switchMode('auto')">⚡ Auto Clean</button>
+        <button class="mode-btn"        id="modeReview" onclick="switchMode('review')">🔍 Review Mode</button>
+      </div>
+      <div class="user-chip">
+        <div class="avatar" id="userAvatar">?</div>
+        <span id="userLabel">—</span>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+
+  <!-- ── Groq API Key Bar ───────────────────────────────────────── -->
+  <div class="groq-bar" id="groqBar">
+    <div class="groq-bar-header" onclick="toggleGroqBar()">
+      <div class="groq-bar-left">
+        <div class="groq-dot" id="groqDot"></div>
+        <span class="groq-label">🤖 Groq AI Summary</span>
+        <span class="groq-status" id="groqStatus">Not configured — click to set up</span>
+      </div>
+      <span class="groq-chevron" id="groqChevron">▼</span>
+    </div>
+    <div class="groq-body" id="groqBody">
+      <div class="groq-row">
+        <div class="groq-field">
+          <label>Groq API Key</label>
+          <input type="password" id="groqKeyInput" placeholder="gsk_••••••••••••••••••••••••••••••••••••••••••••••••••••••••"/>
+        </div>
+        <button class="btn-groq-save" onclick="saveGroqKey()">Save Key</button>
+      </div>
+      <div class="groq-hint">
+        Get a free API key at <a href="https://console.groq.com" target="_blank">console.groq.com</a>.
+        Your key is stored only in your browser session and never sent to our server except when generating a summary.
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload card -->
+  <div class="upload-card" id="uploadCard">
+    <div class="card-header"><div class="dot"></div><span id="uploadCardTitle">Auto Clean — Upload CSV or Excel</span></div>
+    <div class="card-body">
+      <div id="dropzone" role="button" tabindex="0" aria-label="Upload file">
+        <span class="icon">📂</span>
+        <p>Drag &amp; drop your file here<br>or <strong id="browseBtn">browse files</strong></p>
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls"/>
+      </div>
+      <div id="filePill" style="text-align:center;display:none">
+        <div class="file-pill"><span>📄</span><span id="fileName"></span><button id="removeFile" title="Remove">✕</button></div>
+      </div>
+      <button class="btn-primary" id="actionBtn" disabled>⚡ Clean My Data</button>
+      <div class="spinner-wrap" id="spinner">
+        <div class="spinner"></div>
+        <span class="spinner-label" id="spinnerLabel">Analyzing &amp; cleaning…</span>
+      </div>
+      <div class="error-banner" id="errorBanner"></div>
+
+      <!-- Auto-clean results -->
+      <div id="results">
+        <div class="results-divider">Cleaning Report</div>
+        <div class="stats-row">
+          <div class="stat-box"><div class="num" id="statRows">—</div><div class="lbl">Rows Processed</div></div>
+          <div class="stat-box"><div class="num" id="statDupes">—</div><div class="lbl">Duplicates Removed</div></div>
+          <div class="stat-box"><div class="num" id="statWs">—</div><div class="lbl">Whitespace Fixed</div></div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-title">Null Values Filled</div>
+          <div id="nullsTableBody"></div>
+        </div>
+        <div class="renamed-wrap" id="renamedWrap" style="display:none">
+          <div class="table-title">Columns Renamed</div>
+          <div class="rename-list" id="renamedList"></div>
+        </div>
+
+        <!-- AI Summary card (auto-clean mode) -->
+        <div class="ai-summary-card" id="aiCard" style="display:none">
+          <div class="ai-summary-header">
+            <span class="ai-icon">✦</span>
+            <span class="ai-title">AI Summary</span>
+            <span class="ai-model-tag">llama3-8b · groq</span>
+          </div>
+          <div class="ai-body" id="aiBody">
+            <div class="ai-thinking" id="aiThinking">
+              <span>Generating summary</span>
+              <span class="ai-thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+            </div>
+            <div class="ai-text" id="aiText" style="display:none"></div>
+            <div class="ai-error" id="aiError" style="display:none"></div>
+            <button class="btn-regen" id="aiRegenBtn" style="display:none" onclick="regenSummary()">↺ Regenerate</button>
+          </div>
+        </div>
+
+        <a class="btn-outline" id="downloadBtn" href="#" download="cleaned_data.csv" style="margin-top:16px">⬇ Download Cleaned File</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review panel -->
+  <div id="reviewPanel">
+    <div class="review-layout">
+      <div class="sheet-card">
+        <div class="sheet-toolbar">
+          <div class="sheet-title">📊 <span id="sheetFileName">—</span></div>
+          <div class="sheet-legend">
+            <div class="legend-item"><div class="legend-dot null-dot"></div>Missing value</div>
+            <div class="legend-item"><div class="legend-dot ws-dot"></div>Whitespace</div>
+            <div class="legend-item"><div class="legend-dot dup-dot"></div>Duplicate row</div>
+            <div class="legend-item"><div class="legend-dot rename-dot"></div>Header rename</div>
+          </div>
+        </div>
+        <div class="sheet-scroll"><table class="sheet-table" id="sheetTable"></table></div>
+      </div>
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title">Proposed Changes</div>
+          <div class="sidebar-count"><span id="approvedCount">0</span>/<span id="totalCount">0</span></div>
+        </div>
+        <div class="sidebar-actions">
+          <button class="bulk-btn accept-all" onclick="bulkDecide('accept')">✓ Accept All</button>
+          <button class="bulk-btn reject-all" onclick="bulkDecide('reject')">✕ Reject All</button>
+        </div>
+        <div class="change-list" id="changeList"></div>
+        <div class="progress-bar-wrap">
+          <div class="progress-labels"><span>Progress</span><span id="progressLabel">0 of 0 reviewed</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        </div>
+        <div class="apply-wrap">
+          <button class="btn-primary" id="applyBtn" style="margin-top:0" onclick="applyApproved()">Apply Approved Changes</button>
+          <div class="error-banner" id="reviewError" style="margin-top:10px"></div>
+          <a class="btn-outline" id="reviewDownloadBtn" href="#" download="cleaned.csv" style="margin-top:10px;display:none">⬇ Download Result</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Summary card (review mode — shown after apply) -->
+    <div class="ai-summary-card" id="reviewAiCard" style="display:none">
+      <div class="ai-summary-header">
+        <span class="ai-icon">✦</span>
+        <span class="ai-title">AI Summary — Applied Changes</span>
+        <span class="ai-model-tag">llama3-8b · groq</span>
+      </div>
+      <div class="ai-body" id="reviewAiBody">
+        <div class="ai-thinking" id="reviewAiThinking">
+          <span>Generating summary</span>
+          <span class="ai-thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+        <div class="ai-text" id="reviewAiText" style="display:none"></div>
+        <div class="ai-error" id="reviewAiError" style="display:none"></div>
+        <button class="btn-regen" id="reviewAiRegenBtn" style="display:none" onclick="regenReviewSummary()">↺ Regenerate</button>
+      </div>
+    </div>
+  </div>
+
+  <footer style="margin-top:36px;font-size:.63rem;color:var(--muted);letter-spacing:.08em;text-align:center">
+    DataPrep AI &nbsp;·&nbsp; No data is stored &nbsp;·&nbsp; Processing runs locally on your server
+  </footer>
+
+</div><!-- end #appScreen -->
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   AUTH STATE
+════════════════════════════════════════════════════════════════════ */
+let authToken = null, authUsername = null;
+
+function loadSession()  { authToken = sessionStorage.getItem('dp_token'); authUsername = sessionStorage.getItem('dp_username'); }
+function saveSession(t,u){ authToken=t; authUsername=u; sessionStorage.setItem('dp_token',t); sessionStorage.setItem('dp_username',u); }
+function clearSession() { authToken=authUsername=null; sessionStorage.removeItem('dp_token'); sessionStorage.removeItem('dp_username'); }
+
+loadSession();
+if(authToken) showApp(); else document.getElementById('authScreen').classList.add('visible');
+
+function showApp() {
+  document.getElementById('authScreen').classList.remove('visible');
+  document.getElementById('appScreen').classList.add('visible');
+  const u = authUsername||'?';
+  document.getElementById('userLabel').textContent  = u;
+  document.getElementById('userAvatar').textContent = u.charAt(0).toUpperCase();
+  // restore groq key from session
+  const k = sessionStorage.getItem('dp_groq_key');
+  if(k) { document.getElementById('groqKeyInput').value = k; updateGroqStatus(true); }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   AUTH TABS / FORMS
+════════════════════════════════════════════════════════════════════ */
+function showAuthTab(tab) {
+  document.getElementById('tabLogin').classList.toggle('active',tab==='login');
+  document.getElementById('tabRegister').classList.toggle('active',tab==='register');
+  document.getElementById('loginForm').style.display    = tab==='login'    ? 'flex':'none';
+  document.getElementById('registerForm').style.display = tab==='register' ? 'flex':'none';
+}
+document.getElementById('loginPassword').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('regPassword').addEventListener('keydown',   e => { if(e.key==='Enter') doRegister(); });
+
+function updateStrength(pw) {
+  let s=0;
+  if(pw.length>=8)s++; if(pw.length>=12)s++;
+  if(/[A-Z]/.test(pw))s++; if(/[0-9]/.test(pw))s++; if(/[^A-Za-z0-9]/.test(pw))s++;
+  const f=document.getElementById('pwStrengthFill');
+  f.style.width=Math.min(100,s*20)+'%';
+  f.style.background=s<=1?'var(--danger)':s<=3?'var(--warn)':'var(--accent)';
+}
+
+async function doLogin() {
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPassword').value;
+  const errEl=document.getElementById('loginError');
+  const btn=document.getElementById('loginBtn');
+  errEl.style.display='none'; errEl.classList.remove('visible');
+  if(!email||!pass){showAuthError(errEl,'Please fill in all fields.');return;}
+  btn.disabled=true; btn.textContent='Signing in…';
+  const fd=new FormData(); fd.append('email',email); fd.append('password',pass);
+  try {
+    const res=await fetch('/auth/login',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||'Login failed.');
+    saveSession(json.token,json.username); showApp();
+  } catch(err){showAuthError(errEl,err.message);}
+  finally{btn.disabled=false;btn.textContent='Sign In';}
+}
+
+async function doRegister() {
+  const username=document.getElementById('regUsername').value.trim();
+  const email=document.getElementById('regEmail').value.trim();
+  const pass=document.getElementById('regPassword').value;
+  const errEl=document.getElementById('registerError');
+  const btn=document.getElementById('registerBtn');
+  errEl.style.display='none'; errEl.classList.remove('visible');
+  if(!username||!email||!pass){showAuthError(errEl,'Please fill in all fields.');return;}
+  btn.disabled=true; btn.textContent='Creating account…';
+  const fd=new FormData(); fd.append('username',username); fd.append('email',email); fd.append('password',pass);
+  try {
+    const res=await fetch('/auth/register',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||'Registration failed.');
+    saveSession(json.token,json.username); showApp();
+  } catch(err){showAuthError(errEl,err.message);}
+  finally{btn.disabled=false;btn.textContent='Create Account';}
+}
+
+function showAuthError(el,msg){el.textContent=msg;el.style.display='block';el.classList.add('visible');}
+
+function doLogout() {
+  clearSession(); sessionStorage.removeItem('dp_groq_key');
+  resetUpload(); hideResults();
+  document.getElementById('reviewPanel').classList.remove('visible');
+  document.getElementById('reviewPanel').style.display='none';
+  document.getElementById('appScreen').classList.remove('visible');
+  document.getElementById('authScreen').classList.add('visible');
+  document.getElementById('loginEmail').value='';
+  document.getElementById('loginPassword').value='';
+  document.getElementById('loginError').style.display='none';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   GROQ KEY MANAGEMENT
+════════════════════════════════════════════════════════════════════ */
+function toggleGroqBar() {
+  const body=document.getElementById('groqBody');
+  const chev=document.getElementById('groqChevron');
+  const open=body.classList.toggle('open');
+  chev.classList.toggle('open',open);
+}
+
+function saveGroqKey() {
+  const key=document.getElementById('groqKeyInput').value.trim();
+  if(!key){alert('Please enter your Groq API key.');return;}
+  sessionStorage.setItem('dp_groq_key',key);
+  updateGroqStatus(true);
+  // close the bar
+  document.getElementById('groqBody').classList.remove('open');
+  document.getElementById('groqChevron').classList.remove('open');
+}
+
+function updateGroqStatus(active) {
+  const dot=document.getElementById('groqDot');
+  const status=document.getElementById('groqStatus');
+  if(active){
+    dot.classList.add('active');
+    status.textContent='Active — AI summaries enabled';
+    status.style.color='var(--purple)';
+  } else {
+    dot.classList.remove('active');
+    status.textContent='Not configured — click to set up';
+    status.style.color='';
+  }
+}
+
+function getGroqKey() { return sessionStorage.getItem('dp_groq_key')||''; }
+
+/* ════════════════════════════════════════════════════════════════════
+   AUTHENTICATED FETCH
+════════════════════════════════════════════════════════════════════ */
+async function authFetch(url, options={}) {
+  if(!authToken){doLogout();throw new Error('Not authenticated.');}
+  options.headers={...(options.headers||{}),'Authorization':`Bearer ${authToken}`};
+  const res=await fetch(url,options);
+  if(res.status===401){doLogout();throw new Error('Session expired. Please log in again.');}
+  return res;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   APP STATE
+════════════════════════════════════════════════════════════════════ */
+let currentMode='auto', selectedFile=null, reviewData=null;
+let decisions={}, activeFileForApply=null;
+let lastAutoSummary=null, lastAutoFilename=null;   // for AI regen
+let lastReviewChanges=null, lastReviewFilename=null;
+
+/* ════════════════════════════════════════════════════════════════════
+   MODE SWITCHING
+════════════════════════════════════════════════════════════════════ */
+function switchMode(mode) {
+  currentMode=mode;
+  document.getElementById('modeAuto').classList.toggle('active',mode==='auto');
+  document.getElementById('modeReview').classList.toggle('active',mode==='review');
+  document.getElementById('uploadCardTitle').textContent=
+    mode==='review'?'Review Mode — Upload CSV or Excel':'Auto Clean — Upload CSV or Excel';
+  document.getElementById('actionBtn').textContent=
+    mode==='review'?'🔍 Analyze & Open in Reviewer':'⚡ Clean My Data';
+  resetUpload(); hideResults();
+  document.getElementById('reviewPanel').classList.remove('visible');
+  document.getElementById('reviewPanel').style.display='none';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   FILE SELECTION
+════════════════════════════════════════════════════════════════════ */
+const dropzone=document.getElementById('dropzone');
+const fileInput=document.getElementById('fileInput');
+document.getElementById('browseBtn').addEventListener('click',e=>{e.stopPropagation();fileInput.click();});
+dropzone.addEventListener('click',()=>fileInput.click());
+dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')fileInput.click();});
+fileInput.addEventListener('change',()=>{if(fileInput.files[0])setFile(fileInput.files[0]);});
+dropzone.addEventListener('dragover',e=>{e.preventDefault();dropzone.classList.add('dragover');});
+dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop',e=>{
+  e.preventDefault();dropzone.classList.remove('dragover');
+  const f=e.dataTransfer.files[0]; if(f)setFile(f); else showError('No file detected.');
+});
+document.getElementById('removeFile').addEventListener('click',resetUpload);
+
+function setFile(f){
+  selectedFile=f;
+  document.getElementById('fileName').textContent=f.name;
+  document.getElementById('filePill').style.display='block';
+  document.getElementById('actionBtn').disabled=false;
+  hideResults(); hideError();
+}
+function resetUpload(){
+  selectedFile=null;
+  document.getElementById('filePill').style.display='none';
+  document.getElementById('fileName').textContent='';
+  fileInput.value='';
+  document.getElementById('actionBtn').disabled=true;
+  hideResults(); hideError();
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ACTION BUTTON
+════════════════════════════════════════════════════════════════════ */
+document.getElementById('actionBtn').addEventListener('click',()=>{
+  if(!selectedFile)return;
+  if(currentMode==='auto') runAutoClean(); else runAnalyze();
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   AUTO CLEAN
+════════════════════════════════════════════════════════════════════ */
+async function runAutoClean(){
+  hideError(); hideResults(); setLoading(true,'Analyzing & cleaning your data…');
+  const fd=new FormData(); fd.append('file',selectedFile);
+  try {
+    const res=await authFetch('/clean',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||`Server error ${res.status}`);
+    renderAutoResults(json);
+  } catch(err){showError('Error: '+err.message);}
+  finally{setLoading(false);}
+}
+
+function renderAutoResults(data) {
+  const s=data.summary;
+  document.getElementById('statRows').textContent  = s.final_rows.toLocaleString();
+  document.getElementById('statDupes').textContent = s.duplicates_removed.toLocaleString();
+  document.getElementById('statWs').textContent    = s.whitespace_fixed.toLocaleString();
+
+  const nullEntries=Object.entries(s.nulls_filled||{});
+  const nb=document.getElementById('nullsTableBody');
+  if(!nullEntries.length){
+    nb.innerHTML='<div class="empty-note">✓ No null values found — data is complete.</div>';
+  } else {
+    let h='<table><thead><tr><th>Column</th><th>Nulls Filled</th><th>Strategy</th></tr></thead><tbody>';
+    for(const [col,info] of nullEntries)
+      h+=`<tr><td class="mono-val">${esc(col)}</td><td>${info.count}</td><td class="method-val">${esc(info.method)}</td></tr>`;
+    nb.innerHTML=h+'</tbody></table>';
+  }
+
+  const renamedEntries=Object.entries(s.columns_renamed||{});
+  const rw=document.getElementById('renamedWrap');
+  if(renamedEntries.length){
+    document.getElementById('renamedList').innerHTML=renamedEntries.map(([o,n])=>
+      `<span class="rename-tag"><span class="old">${esc(o)}</span><span style="color:var(--muted2)">→</span><span class="new">${esc(n)}</span></span>`
+    ).join('');
+    rw.style.display='block';
+  } else { rw.style.display='none'; }
+
+  const blob=b64toBlob(data.cleaned_csv,'text/csv');
+  const url=URL.createObjectURL(blob);
+  const dl=document.getElementById('downloadBtn');
+  dl.href=url;
+  dl.download=`${(data.filename||'data').replace(/\.(csv|xlsx|xls)$/i,'')}_cleaned.csv`;
+
+  document.getElementById('results').style.display='block';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+
+  // save for regen
+  lastAutoSummary=s; lastAutoFilename=data.filename;
+
+  // trigger AI summary if key is set
+  const aiCard=document.getElementById('aiCard');
+  if(getGroqKey()){
+    aiCard.style.display='block';
+    runAiSummary('auto', s, null, data.filename);
+  } else {
+    aiCard.style.display='none';
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   REVIEW MODE
+════════════════════════════════════════════════════════════════════ */
+async function runAnalyze(){
+  hideError(); hideResults(); setLoading(true,'Scanning your data for issues…');
+  document.getElementById('reviewPanel').classList.remove('visible');
+  document.getElementById('reviewPanel').style.display='none';
+  const fd=new FormData(); fd.append('file',selectedFile);
+  try {
+    const res=await authFetch('/analyze',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||`Server error ${res.status}`);
+    reviewData=json; activeFileForApply=selectedFile;
+    decisions={}; json.changes.forEach(c=>decisions[c.id]=null);
+    openReviewPanel(json);
+  } catch(err){showError('Error: '+err.message);}
+  finally{setLoading(false);}
+}
+
+function openReviewPanel(data){
+  document.getElementById('sheetFileName').textContent=data.filename||'file';
+  renderSheet(data); renderChangeList(data.changes); updateProgress();
+  const panel=document.getElementById('reviewPanel');
+  panel.style.display='flex'; panel.classList.add('visible');
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
+  document.getElementById('reviewDownloadBtn').style.display='none';
+  document.getElementById('reviewError').style.display='none';
+  document.getElementById('reviewAiCard').style.display='none';
+}
+
+function renderSheet(data){
+  const{columns,rows,changes}=data;
+  const colRenames={},cellMap={},dupRows={};
+  for(const c of changes){
+    if(c.type==='col_rename')colRenames[c.col]=c;
+    else if(c.type==='duplicate_row')dupRows[c.row]=c;
+    else cellMap[`${c.row},${c.col}`]=c;
+  }
+  let html='<thead><tr><th class="row-num">#</th>';
+  for(let ci=0;ci<columns.length;ci++){
+    const rename=colRenames[ci];
+    html+=`<th class="${rename?'has-change':''}" data-col="${ci}" title="${rename?`→ ${esc(rename.new)}`:''}">${esc(columns[ci])}${rename?'<span class="change-badge" style="background:var(--accent)"></span>':''}</th>`;
+  }
+  html+='</tr></thead><tbody>';
+  for(let ri=0;ri<rows.length;ri++){
+    const dup=dupRows[ri];
+    html+=`<tr class="${dup?'dup-row':''}" id="shrow-${ri}"><td class="row-num">${ri+1}</td>`;
+    for(let ci=0;ci<columns.length;ci++){
+      const chg=cellMap[`${ri},${ci}`];
+      const val=rows[ri][ci];
+      const cls=chg?(chg.type==='null_fill'?'cell-null':'cell-ws'):'';
+      const badge=chg?`<span class="change-badge" style="background:${chg.type==='null_fill'?'var(--info)':'var(--warn)'}"></span>`:'';
+      html+=`<td class="${cls}" id="cell-${ri}-${ci}">${esc(val)}${badge}</td>`;
+    }
+    html+='</tr>';
+  }
+  document.getElementById('sheetTable').innerHTML=html+'</tbody>';
+}
+
+function renderChangeList(changes){
+  document.getElementById('totalCount').textContent=changes.length;
+  const list=document.getElementById('changeList');
+  if(!changes.length){
+    list.innerHTML='<div class="empty-note" style="padding:20px">✓ No issues found in this file.</div>';
+    return;
+  }
+  list.innerHTML=changes.map(c=>changeItemHTML(c)).join('');
+}
+
+function changeItemHTML(c){
+  const typeLabel={null_fill:'Null Fill',whitespace:'Whitespace',duplicate_row:'Duplicate Row',col_rename:'Rename'}[c.type]||c.type;
+  let loc='';
+  if(c.row!==null&&c.col!==null)loc=`R${c.row+1} C${c.col+1}`;
+  else if(c.row!==null)loc=`Row ${c.row+1}`;
+  else if(c.col!==null)loc=`Col ${c.col+1}`;
+  const diff=c.type!=='duplicate_row'
+    ?`<div class="ci-diff"><span class="ci-old">${esc(c.old||'∅')}</span><span class="ci-arrow">→</span><span class="ci-new">${esc(c.new)}</span></div>`:'';
+  const d=decisions[c.id];
+  return `<div class="change-item ${d||''}" id="ci-${c.id}">
+    <div class="ci-top"><span class="ci-type ${c.type}">${typeLabel}</span><span class="ci-loc">${esc(loc)}</span></div>
+    <div class="ci-reason">${esc(c.reason)}</div>${diff}
+    <div class="ci-btns">
+      <button class="ci-btn accept ${d==='accept'?'active':''}" onclick="decide(${c.id},'accept')">✓ Accept</button>
+      <button class="ci-btn reject ${d==='reject'?'active':''}" onclick="decide(${c.id},'reject')">✕ Reject</button>
+    </div></div>`;
+}
+
+function decide(id,verdict){
+  const change=reviewData.changes.find(c=>c.id===id);
+  if(!change)return;
+  decisions[id]=decisions[id]===verdict?null:verdict;
+  const d=decisions[id];
+  const item=document.getElementById(`ci-${id}`);
+  if(item){
+    item.className=`change-item ${d||''}`;
+    item.querySelectorAll('.ci-btn').forEach(b=>b.classList.remove('active'));
+    if(d)item.querySelector(`.ci-btn.${d}`)?.classList.add('active');
+  }
+  updateCellVisual(change,d);
+  updateProgress();
+}
+
+function updateCellVisual(c,verdict){
+  if(c.type==='duplicate_row'){
+    const row=document.getElementById(`shrow-${c.row}`);
+    if(row){row.classList.toggle('approved',verdict==='accept');row.classList.toggle('rejected',verdict==='reject');}
+    return;
+  }
+  if(c.type==='col_rename'){
+    const th=document.querySelector(`[data-col="${c.col}"]`);
+    if(th)th.style.color=verdict==='accept'?'var(--accent)':verdict==='reject'?'var(--danger)':'';
+    return;
+  }
+  const cell=document.getElementById(`cell-${c.row}-${c.col}`);
+  if(!cell)return;
+  cell.classList.remove('approved','rejected');
+  if(verdict==='accept')cell.classList.add('approved');
+  else if(verdict==='reject')cell.classList.add('rejected');
+}
+
+function bulkDecide(verdict){
+  reviewData.changes.forEach(c=>{
+    decisions[c.id]=verdict;
+    updateCellVisual(c,verdict);
+    const item=document.getElementById(`ci-${c.id}`);
+    if(item){
+      item.className=`change-item ${verdict}`;
+      item.querySelectorAll('.ci-btn').forEach(b=>b.classList.remove('active'));
+      item.querySelector(`.ci-btn.${verdict}`)?.classList.add('active');
+    }
+  });
+  updateProgress();
+}
+
+function updateProgress(){
+  const total=reviewData?.changes.length||0;
+  const reviewed=Object.values(decisions).filter(v=>v!==null).length;
+  const accepted=Object.values(decisions).filter(v=>v==='accept').length;
+  document.getElementById('approvedCount').textContent=accepted;
+  document.getElementById('totalCount').textContent=total;
+  document.getElementById('progressLabel').textContent=`${reviewed} of ${total} reviewed`;
+  document.getElementById('progressFill').style.width=total?`${(reviewed/total)*100}%`:'0%';
+}
+
+async function applyApproved(){
+  const approvedIds=Object.entries(decisions).filter(([,v])=>v==='accept').map(([id])=>parseInt(id));
+  if(!approvedIds.length){
+    const e=document.getElementById('reviewError');
+    e.textContent='No changes approved yet.';e.style.display='block';e.classList.add('visible');return;
+  }
+  document.getElementById('reviewError').style.display='none';
+  document.getElementById('applyBtn').disabled=true;
+  document.getElementById('applyBtn').textContent='Applying…';
+  const fd=new FormData();
+  fd.append('file',activeFileForApply);
+  fd.append('approved_ids',JSON.stringify(approvedIds));
+  try {
+    const res=await authFetch('/apply',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||`Server error ${res.status}`);
+    const blob=b64toBlob(json.cleaned_csv,'text/csv');
+    const url=URL.createObjectURL(blob);
+    const safe=(json.filename||'data').replace(/\.(csv|xlsx|xls)$/i,'');
+    const dl=document.getElementById('reviewDownloadBtn');
+    dl.href=url; dl.download=`${safe}_reviewed.csv`; dl.style.display='flex';
+    dl.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+    // AI summary for review mode
+    const approvedChanges=reviewData.changes.filter(c=>approvedIds.includes(c.id));
+    lastReviewChanges=approvedChanges; lastReviewFilename=json.filename;
+    const aiCard=document.getElementById('reviewAiCard');
+    if(getGroqKey() && approvedChanges.length){
+      aiCard.style.display='block';
+      aiCard.scrollIntoView({behavior:'smooth',block:'nearest'});
+      runAiSummary('review', null, approvedChanges, json.filename);
+    }
+  } catch(err){
+    const e=document.getElementById('reviewError');
+    e.textContent='Error: '+err.message;e.style.display='block';e.classList.add('visible');
+  } finally {
+    document.getElementById('applyBtn').disabled=false;
+    document.getElementById('applyBtn').textContent='Apply Approved Changes';
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   AI SUMMARY (Groq)
+════════════════════════════════════════════════════════════════════ */
+async function runAiSummary(mode, summaryData, changesData, filename) {
+  const isReview = mode === 'review';
+  const thinkEl  = document.getElementById(isReview ? 'reviewAiThinking' : 'aiThinking');
+  const textEl   = document.getElementById(isReview ? 'reviewAiText'     : 'aiText');
+  const errEl    = document.getElementById(isReview ? 'reviewAiError'    : 'aiError');
+  const regenBtn = document.getElementById(isReview ? 'reviewAiRegenBtn' : 'aiRegenBtn');
+
+  // reset
+  thinkEl.style.display='flex'; textEl.style.display='none'; textEl.textContent='';
+  errEl.style.display='none';   regenBtn.style.display='none';
+
+  const fd=new FormData();
+  fd.append('groq_api_key', getGroqKey());
+  fd.append('filename',     filename||'file');
+  fd.append('summary_json', summaryData  ? JSON.stringify(summaryData)  : '{}');
+  fd.append('changes_json', changesData  ? JSON.stringify(changesData)  : '[]');
+
+  try {
+    const res=await authFetch('/summarize',{method:'POST',body:fd});
+    const json=await res.json();
+    if(!res.ok) throw new Error(json.detail||`Groq error ${res.status}`);
+
+    thinkEl.style.display='none';
+    textEl.style.display='block';
+    // typewriter effect
+    await typewrite(textEl, json.summary_text);
+    regenBtn.style.display='inline-block';
+  } catch(err){
+    thinkEl.style.display='none';
+    errEl.textContent='⚠ '+err.message;
+    errEl.style.display='block';
+    regenBtn.style.display='inline-block';
+  }
+}
+
+async function typewrite(el, text) {
+  el.innerHTML='';
+  const cursor=document.createElement('span');
+  cursor.className='ai-cursor';
+  el.appendChild(cursor);
+  // render markdown-lite: **bold** → <strong>
+  const formatted = text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  const tmp=document.createElement('div');
+  tmp.innerHTML=formatted;
+  const plain=tmp.textContent;   // strip tags for char-by-char
+  let i=0;
+  await new Promise(resolve=>{
+    const iv=setInterval(()=>{
+      if(i>=plain.length){clearInterval(iv);cursor.remove();el.innerHTML=formatted;resolve();return;}
+      el.insertBefore(document.createTextNode(plain[i]),cursor);
+      i++;
+    },12);
+  });
+}
+
+function regenSummary()       { if(lastAutoSummary)   runAiSummary('auto',  lastAutoSummary,   null,              lastAutoFilename);   }
+function regenReviewSummary() { if(lastReviewChanges) runAiSummary('review',null,              lastReviewChanges, lastReviewFilename); }
+
+/* ════════════════════════════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════════════════════════════ */
+function setLoading(on,label){
+  document.getElementById('actionBtn').disabled=on;
+  document.getElementById('spinner').classList.toggle('visible',on);
+  if(label)document.getElementById('spinnerLabel').textContent=label;
+}
+function showError(msg){const b=document.getElementById('errorBanner');b.textContent=msg;b.style.display='block';b.classList.add('visible');}
+function hideError(){const b=document.getElementById('errorBanner');b.style.display='none';b.classList.remove('visible');}
+function hideResults(){document.getElementById('results').style.display='none';}
+function esc(str){return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function b64toBlob(b64,type){const bytes=atob(b64);const arr=new Uint8Array(bytes.length);for(let i=0;i<bytes.length;i++)arr[i]=bytes.charCodeAt(i);return new Blob([arr],{type});}
+</script>
+</body>
+</html>
