@@ -2076,3 +2076,162 @@ td.method-val {
   .chat-fab    { bottom: 20px; right: 16px; padding: 12px 18px; }
   .chat-fab-label { display: none; }
 }
+
+/* ================================================================
+   DATASETS & HISTORY PANELS
+================================================================ */
+
+/* ── Dataset total badge ───────────────────────────────────── */
+.ds-total-badge {
+  background: var(--accent-light); border: 1px solid var(--accent-mid);
+  color: var(--accent); font-size: .72rem; font-weight: 700;
+  padding: 4px 12px; border-radius: 99px;
+}
+
+/* ── Dataset cards grid ────────────────────────────────────── */
+.ds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.ds-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+  transition: box-shadow .2s, transform .15s;
+  animation: fadeIn .25s ease both;
+}
+.ds-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+.ds-card-header {
+  padding: 14px 16px 10px;
+  display: flex; align-items: flex-start; gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.ds-file-icon {
+  width: 38px; height: 38px; border-radius: var(--r-md); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+}
+.ds-file-icon.csv  { background: var(--success-bg); border: 1px solid var(--success-bd); }
+.ds-file-icon.xlsx { background: var(--info-bg);    border: 1px solid var(--info-bd); }
+.ds-file-icon.xls  { background: var(--info-bg);    border: 1px solid var(--info-bd); }
+
+.ds-file-info { flex: 1; min-width: 0; }
+.ds-file-name {
+  font-size: .88rem; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.ds-file-meta { font-size: .72rem; color: var(--muted); }
+
+.ds-status-badge {
+  font-size: .62rem; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; padding: 3px 8px;
+  border-radius: 99px; border: 1px solid; white-space: nowrap; flex-shrink: 0;
+}
+.ds-status-badge.uploaded  { color: var(--muted);   background: var(--surface-2); border-color: var(--border); }
+.ds-status-badge.cleaned   { color: var(--success);  background: var(--success-bg); border-color: var(--success-bd); }
+.ds-status-badge.engineered{ color: var(--accent);   background: var(--accent-light); border-color: var(--accent-mid); }
+
+.ds-card-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  padding: 10px 16px; gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.ds-stat { text-align: center; }
+.ds-stat-val { font-size: .9rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.ds-stat-lbl { font-size: .6rem; color: var(--muted); margin-top: 2px; letter-spacing: .02em; }
+
+.ds-card-score {
+  padding: 8px 16px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ds-score-label { font-size: .72rem; color: var(--muted); }
+.ds-score-bar-track { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.ds-score-bar-fill  { height: 100%; border-radius: 3px; transition: width .6s ease; }
+.ds-score-num { font-size: .72rem; font-weight: 700; width: 40px; text-align: right; }
+
+.ds-card-footer {
+  padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+}
+.ds-card-time { font-size: .68rem; color: var(--muted-2); }
+.ds-card-actions { display: flex; gap: 6px; }
+.ds-action-btn {
+  padding: 5px 11px; font-family: var(--display); font-size: .72rem;
+  font-weight: 600; border-radius: var(--r-sm); cursor: pointer;
+  transition: all .15s; border: 1.5px solid var(--border);
+  background: none; color: var(--muted);
+}
+.ds-action-btn:hover         { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.ds-action-btn.danger:hover  { border-color: var(--danger-bd); color: var(--danger); background: var(--danger-bg); }
+
+/* ── History timeline ──────────────────────────────────────── */
+.hist-timeline {
+  display: flex; flex-direction: column; gap: 0;
+  position: relative;
+}
+.hist-timeline::before {
+  content: ''; position: absolute; left: 19px; top: 0; bottom: 0;
+  width: 2px; background: var(--border); z-index: 0;
+}
+
+.hist-item {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 0 0 20px 0; position: relative; z-index: 1;
+  animation: fadeIn .25s ease both;
+}
+.hist-item:last-child { padding-bottom: 0; }
+
+.hist-dot-wrap {
+  width: 40px; flex-shrink: 0; display: flex;
+  justify-content: center; padding-top: 2px;
+}
+.hist-dot {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .55rem; font-weight: 700; color: #fff; box-shadow: 0 0 0 2px var(--border);
+  flex-shrink: 0;
+}
+.hist-dot.upload   { background: var(--info); }
+.hist-dot.clean    { background: var(--success); }
+.hist-dot.review   { background: var(--warn); }
+.hist-dot.features { background: var(--purple); }
+.hist-dot.download { background: var(--accent); }
+
+.hist-card {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+.hist-card-header {
+  padding: 11px 14px; display: flex; align-items: center;
+  justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.hist-card-left { display: flex; align-items: center; gap: 9px; }
+.hist-event-badge {
+  font-size: .62rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap;
+}
+.hist-event-badge.upload   { color: var(--info);    background: var(--info-bg);    border-color: var(--info-bd); }
+.hist-event-badge.clean    { color: var(--success);  background: var(--success-bg); border-color: var(--success-bd); }
+.hist-event-badge.review   { color: var(--warn);    background: var(--warn-bg);    border-color: var(--warn-bd); }
+.hist-event-badge.features { color: var(--purple);  background: var(--purple-bg);  border-color: var(--purple-bd); }
+.hist-event-badge.download { color: var(--accent);  background: var(--accent-light);border-color: var(--accent-mid); }
+
+.hist-file-name { font-size: .85rem; font-weight: 600; color: var(--text); }
+.hist-card-time { font-size: .68rem; color: var(--muted-2); white-space: nowrap; }
+
+.hist-card-body {
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.hist-detail-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: var(--r-sm);
+  font-size: .72rem; font-weight: 500; color: var(--text-2);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.hist-detail-chip .chip-icon { font-size: .8rem; }

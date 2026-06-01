@@ -148,6 +148,9 @@ function switchPanel(name) {
   // Update topbar title
   const titleEl = document.getElementById('topbarTitle');
   if (titleEl) titleEl.textContent = PANEL_TITLES[name] || name;
+  // Refresh data panels on navigation
+  if (name === 'datasets') renderDatasetsPanel();
+  if (name === 'history')  renderHistoryPanel();
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -244,6 +247,10 @@ function setFile(f) {
   const analyzing = document.getElementById('dqAnalyzing');
   if (analyzing) analyzing.style.display = 'flex';
   runQualityDashboard(f);
+  // Track upload
+  window._currentDsName = f.name;
+  recordDataset(f, null);
+  recordHistory('upload', f.name, { size: formatFileSize(f.size) });
 }
 
 function resetUpload() {
@@ -344,6 +351,17 @@ function renderAutoResults(data) {
   runAiSummary('auto', s, null, data.filename);
 
   document.getElementById('feBtn').style.display = 'flex';
+  // Track cleaning session
+  const _fname = data.filename || window._currentDsName || 'file';
+  const _nullCount = Object.values(s.nulls_filled || {}).reduce((a,v) => a + v.count, 0);
+  recordHistory('clean', _fname, {
+    rows:        s.final_rows,
+    dupes:       s.duplicates_removed || null,
+    nullsFilled: _nullCount  || null,
+    wsFixed:     s.whitespace_fixed   || null,
+    renames:     Object.keys(s.columns_renamed || {}).length || null,
+  });
+  updateDatasetStatus(_fname, 'cleaned');
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -525,6 +543,11 @@ async function applyApproved() {
       runAiSummary('review', null, approvedChanges, json.filename);
     }
     document.getElementById('reviewFeBtn').style.display = 'flex';
+    // Track review session
+    const _rfname = json.filename || window._currentDsName || 'file';
+    const _approved = Object.values(decisions).filter(v => v === 'accept').length;
+    recordHistory('review', _rfname, { changes: _approved });
+    updateDatasetStatus(_rfname, 'cleaned');
   } catch(err) {
     const e = document.getElementById('reviewError');
     e.textContent = 'Error: ' + err.message; e.style.display = 'block'; e.classList.add('visible');
@@ -674,6 +697,8 @@ function openPreview(mode) {
   const blob     = mode === 'auto' ? currentAutoBlob   : currentReviewBlob;
   const filename = mode === 'auto' ? currentAutoFilename : currentReviewFilename;
   if (!blob) return;
+  // Track download event
+  if (filename) recordHistory('download', filename);
   const reader = new FileReader();
   reader.onload = function(e) {
     const text    = e.target.result;
@@ -1615,6 +1640,12 @@ function showFEApplyModal(data) {
   }
   body.innerHTML = html;
   document.getElementById('feApplyOverlay').classList.add('visible');
+  // Track FE session
+  const _fefname = data.filename || (feSource === 'auto' ? currentAutoFilename : currentReviewFilename) || 'file';
+  const _ops     = data.applied?.length || 0;
+  const _colsAdd = (data.final_cols || 0) - (data.original_cols || 0);
+  recordHistory('features', _fefname, { operations: _ops, colsAdded: _colsAdd > 0 ? _colsAdd : null });
+  updateDatasetStatus(_fefname, 'engineered');
 }
 
 function closeFEApplyModal() { document.getElementById('feApplyOverlay').classList.remove('visible'); }
@@ -2101,6 +2132,26 @@ function renderQualityDashboard(profile, filename) {
   }, 600);
   // Notify chat assistant with fresh profile
   if (typeof notifyChatAfterProfile === 'function') notifyChatAfterProfile(profile);
+  // Update dataset record with real stats from profile
+  if (window._currentDsName) {
+    const _ds = dsLoad();
+    const _di = _ds.findIndex(d => d.name === window._currentDsName);
+    if (_di >= 0) {
+      _ds[_di].rows    = profile.nRows;
+      _ds[_di].cols    = profile.nCols;
+      _ds[_di].missing = Math.round(profile.missingPct * 100);
+      _ds[_di].score   = profile.score;
+      dsSave(_ds);
+    }
+    const _hist = histLoad();
+    const _hi = _hist.findIndex(h => h.type === 'upload' && h.file === window._currentDsName);
+    if (_hi >= 0) {
+      _hist[_hi].rows  = profile.nRows;
+      _hist[_hi].cols  = profile.nCols;
+      _hist[_hi].score = profile.score;
+      histSave(_hist);
+    }
+  }
 }
 
 /* dashboard hooks inlined into setFile/resetUpload above */
@@ -2376,7 +2427,7 @@ CURRENT DATASET CONTEXT:
 }
 
 /* ── API call via /chat backend proxy (Groq) ─────────────── */
-async function callClaudeAPI(messages, systemPrompt) {
+async function callClaudeAPIFull(messages, systemPrompt) {
   const fd = new FormData();
   fd.append('messages_json', JSON.stringify(messages));
   fd.append('system_prompt', systemPrompt || '');
@@ -2397,9 +2448,7 @@ async function callClaudeAPI(messages, systemPrompt) {
   }
 
   const data = await response.json();
-
-  // If no key configured, data.mode === 'fallback' — still show the reply
-  return data.reply || '';
+  return { reply: data.reply || '', mode: data.mode || 'groq' };
 }
 
 /* ── UI helpers ─────────────────────────────────────────────── */
@@ -2527,7 +2576,7 @@ function scrollToBottom() {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-function addMessage(role, text) {
+function addMessage(role, text, style) {
   // Remove welcome state on first message
   const welcome = document.querySelector('.chat-welcome');
   if (welcome) welcome.remove();
@@ -2550,7 +2599,7 @@ function addMessage(role, text) {
   inner.style.maxWidth = '82%';
 
   const bubble = document.createElement('div');
-  bubble.className = 'chat-bubble';
+  bubble.className = 'chat-bubble' + (style === 'warning' ? ' chat-bubble-warning' : '');
   bubble.innerHTML = formatChatText(text);
 
   const timeEl = document.createElement('div');
@@ -2633,11 +2682,10 @@ async function sendChatMessage() {
   const messages = chatState.history.slice(-10);
 
   try {
-    const reply = await callClaudeAPI(messages, systemPrompt);
+    const { reply, mode } = await callClaudeAPIFull(messages, systemPrompt);
     hideTyping();
-    addMessage('ai', reply);
+    addMessage('ai', reply, mode === 'fallback' ? 'warning' : 'normal');
     chatState.history.push({ role: 'assistant', content: reply });
-    // Refresh suggestions after each reply
     updateSuggestions();
   } catch(err) {
     hideTyping();
@@ -2705,3 +2753,271 @@ document.addEventListener('keydown', e => {
     toggleChat();
   }
 });
+
+/* ================================================================
+   DATASETS & HISTORY — persistent tracking via localStorage
+================================================================ */
+
+const DS_KEY   = 'dp_datasets_v1';
+const HIST_KEY = 'dp_history_v1';
+
+/* ── Storage helpers ─────────────────────────────────────────── */
+function dsLoad()   { try { return JSON.parse(localStorage.getItem(DS_KEY)   || '[]'); } catch { return []; } }
+function histLoad() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; } }
+function dsSave(arr)   { localStorage.setItem(DS_KEY,   JSON.stringify(arr.slice(0, 50))); }
+function histSave(arr) { localStorage.setItem(HIST_KEY, JSON.stringify(arr.slice(0, 100))); }
+
+function nowStr() {
+  return new Date().toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function relTime(ts) {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+function fileExt(name) { return (name || '').split('.').pop().toLowerCase(); }
+function fileIcon(name) {
+  const ext = fileExt(name);
+  if (ext === 'csv')  return '📄';
+  if (ext === 'xlsx') return '📊';
+  if (ext === 'xls')  return '📊';
+  return '📁';
+}
+function scoreColor(s) {
+  if (s >= 90) return 'var(--success)';
+  if (s >= 70) return 'var(--info)';
+  if (s >= 50) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+/* ── Record a dataset upload ─────────────────────────────────── */
+function recordDataset(file, profile) {
+  const datasets = dsLoad();
+  // Check if file with same name already exists — update it
+  const existing = datasets.findIndex(d => d.name === file.name);
+  const entry = {
+    id:         existing >= 0 ? datasets[existing].id : Date.now(),
+    name:       file.name,
+    size:       formatFileSize(file.size),
+    ext:        fileExt(file.name),
+    uploadedAt: Date.now(),
+    uploadedStr:nowStr(),
+    rows:       profile?.nRows  || '?',
+    cols:       profile?.nCols  || '?',
+    missing:    profile ? Math.round(profile.missingPct * 100) : null,
+    score:      profile?.score  || null,
+    status:     'uploaded',   // uploaded | cleaned | engineered
+    sessions:   existing >= 0 ? (datasets[existing].sessions || []) : [],
+  };
+  if (existing >= 0) datasets[existing] = entry;
+  else datasets.unshift(entry);
+  dsSave(datasets);
+  return entry.id;
+}
+
+/* ── Update dataset status ───────────────────────────────────── */
+function updateDatasetStatus(name, status, extra = {}) {
+  const datasets = dsLoad();
+  const idx = datasets.findIndex(d => d.name === name);
+  if (idx >= 0) {
+    datasets[idx].status = status;
+    Object.assign(datasets[idx], extra);
+    dsSave(datasets);
+  }
+}
+
+/* ── Record a history event ──────────────────────────────────── */
+function recordHistory(type, filename, details = {}) {
+  const history = histLoad();
+  history.unshift({
+    id:      Date.now(),
+    type,             // upload | clean | review | features | download
+    file:    filename,
+    time:    Date.now(),
+    timeStr: nowStr(),
+    ...details,
+  });
+  histSave(history);
+}
+
+/* ── Render datasets panel ───────────────────────────────────── */
+function renderDatasetsPanel() {
+  const datasets = dsLoad();
+  const emptyEl  = document.getElementById('datasetsEmpty');
+  const listEl   = document.getElementById('datasetsList');
+  const gridEl   = document.getElementById('dsGrid');
+  const badgeEl  = document.getElementById('dsTotalBadge');
+
+  if (!datasets.length) {
+    emptyEl.style.display = 'flex';
+    listEl.style.display  = 'none';
+    if (badgeEl) badgeEl.style.display = 'none';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  listEl.style.display  = 'block';
+  if (badgeEl) {
+    badgeEl.style.display  = 'inline-flex';
+    badgeEl.textContent    = `${datasets.length} dataset${datasets.length > 1 ? 's' : ''}`;
+  }
+
+  gridEl.innerHTML = datasets.map(d => {
+    const ext       = d.ext || 'csv';
+    const statusMap = { uploaded:'Uploaded', cleaned:'Cleaned', engineered:'Engineered' };
+    const scoreW    = d.score != null ? `${d.score}%` : '0%';
+    const scoreC    = d.score != null ? scoreColor(d.score) : 'var(--muted-3)';
+    const scoreLabel= d.score != null ? `${d.score}/100` : '—';
+
+    return `
+    <div class="ds-card" id="dscard-${d.id}">
+      <div class="ds-card-header">
+        <div class="ds-file-icon ${ext}">${fileIcon(d.name)}</div>
+        <div class="ds-file-info">
+          <div class="ds-file-name" title="${esc(d.name)}">${esc(d.name)}</div>
+          <div class="ds-file-meta">${esc(d.size)} · ${esc(d.uploadedStr)}</div>
+        </div>
+        <span class="ds-status-badge ${d.status}">${statusMap[d.status] || d.status}</span>
+      </div>
+      <div class="ds-card-stats">
+        <div class="ds-stat">
+          <div class="ds-stat-val">${typeof d.rows === 'number' ? d.rows.toLocaleString() : d.rows}</div>
+          <div class="ds-stat-lbl">Rows</div>
+        </div>
+        <div class="ds-stat">
+          <div class="ds-stat-val">${d.cols}</div>
+          <div class="ds-stat-lbl">Columns</div>
+        </div>
+        <div class="ds-stat">
+          <div class="ds-stat-val">${d.missing != null ? d.missing + '%' : '—'}</div>
+          <div class="ds-stat-lbl">Missing</div>
+        </div>
+      </div>
+      <div class="ds-card-score">
+        <span class="ds-score-label">Health</span>
+        <div class="ds-score-bar-track">
+          <div class="ds-score-bar-fill" style="width:${scoreW};background:${scoreC}"></div>
+        </div>
+        <span class="ds-score-num" style="color:${scoreC}">${scoreLabel}</span>
+      </div>
+      <div class="ds-card-footer">
+        <span class="ds-card-time">⏱ ${relTime(d.uploadedAt)}</span>
+        <div class="ds-card-actions">
+          <button class="ds-action-btn" onclick="reOpenDataset('${esc(d.name)}')">Open</button>
+          <button class="ds-action-btn danger" onclick="deleteDataset(${d.id})">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Render history panel ────────────────────────────────────── */
+function renderHistoryPanel() {
+  const history  = histLoad();
+  const emptyEl  = document.getElementById('historyEmpty');
+  const listEl   = document.getElementById('historyList');
+  const tlEl     = document.getElementById('histTimeline');
+
+  if (!history.length) {
+    emptyEl.style.display = 'flex';
+    listEl.style.display  = 'none';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  listEl.style.display  = 'block';
+
+  const typeLabel = {
+    upload:   'Dataset Uploaded',
+    clean:    'Auto-Cleaned',
+    review:   'Review Applied',
+    features: 'Features Engineered',
+    download: 'Downloaded',
+  };
+  const dotLabel = {
+    upload:'↑', clean:'✓', review:'◎', features:'⬡', download:'↓',
+  };
+
+  tlEl.innerHTML = history.map(h => {
+    // Build detail chips
+    const chips = [];
+    if (h.rows)        chips.push({ icon:'📋', text:`${typeof h.rows === 'number' ? h.rows.toLocaleString() : h.rows} rows` });
+    if (h.cols)        chips.push({ icon:'⊞', text:`${h.cols} columns` });
+    if (h.dupes)       chips.push({ icon:'🗑', text:`${h.dupes} dupes removed` });
+    if (h.nullsFilled) chips.push({ icon:'🔧', text:`${h.nullsFilled} nulls filled` });
+    if (h.wsFixed)     chips.push({ icon:'✂', text:`${h.wsFixed} whitespace fixed` });
+    if (h.renames)     chips.push({ icon:'🏷', text:`${h.renames} columns renamed` });
+    if (h.changes)     chips.push({ icon:'✅', text:`${h.changes} changes applied` });
+    if (h.operations)  chips.push({ icon:'⚙', text:`${h.operations} operations applied` });
+    if (h.colsAdded)   chips.push({ icon:'✨', text:`${h.colsAdded} columns added` });
+    if (h.size)        chips.push({ icon:'📦', text:h.size });
+    if (h.score)       chips.push({ icon:'⭐', text:`Score: ${h.score}/100` });
+    if (h.mode)        chips.push({ icon:'🤖', text:h.mode === 'ai' ? 'AI-powered' : 'Rule-based' });
+
+    const chipsHTML = chips.length
+      ? `<div class="hist-card-body">${chips.map(c =>
+          `<span class="hist-detail-chip"><span class="chip-icon">${c.icon}</span>${esc(c.text)}</span>`
+        ).join('')}</div>` : '';
+
+    return `
+    <div class="hist-item">
+      <div class="hist-dot-wrap">
+        <div class="hist-dot ${h.type}">${dotLabel[h.type] || '·'}</div>
+      </div>
+      <div class="hist-card">
+        <div class="hist-card-header">
+          <div class="hist-card-left">
+            <span class="hist-event-badge ${h.type}">${typeLabel[h.type] || h.type}</span>
+            <span class="hist-file-name">${esc(h.file)}</span>
+          </div>
+          <span class="hist-card-time">${relTime(h.time)}</span>
+        </div>
+        ${chipsHTML}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Dataset management actions ──────────────────────────────── */
+function reOpenDataset(name) {
+  switchPanel('clean');
+  // Just switch to clean panel — user can re-upload
+  setTimeout(() => {
+    const sub = document.createElement('div');
+    sub.style.cssText = 'padding:10px 14px;background:var(--info-bg);border:1px solid var(--info-bd);border-radius:var(--r-md);font-size:.82rem;color:var(--info);margin-top:10px';
+    sub.textContent = `Re-upload "${name}" to continue working with it.`;
+    const card = document.querySelector('.upload-card-body');
+    if (card) { card.appendChild(sub); setTimeout(() => sub.remove(), 4000); }
+  }, 300);
+}
+
+function deleteDataset(id) {
+  const datasets = dsLoad().filter(d => d.id !== id);
+  dsSave(datasets);
+  renderDatasetsPanel();
+}
+
+function clearDatasets() {
+  if (!confirm('Clear all datasets from the list? This does not delete your files.')) return;
+  localStorage.removeItem(DS_KEY);
+  renderDatasetsPanel();
+}
+
+function clearHistory() {
+  if (!confirm('Clear all history?')) return;
+  localStorage.removeItem(HIST_KEY);
+  renderHistoryPanel();
+}
+
+/* panel refresh inlined into switchPanel below */
+
+// Init datasets & history panels on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { renderDatasetsPanel(); renderHistoryPanel(); });
+} else {
+  renderDatasetsPanel(); renderHistoryPanel();
+}

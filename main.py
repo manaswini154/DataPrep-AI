@@ -11,6 +11,20 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
+# ── Load .env file BEFORE reading any env vars ─────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    # Search up from main.py's directory to find .env
+    _env_path = Path(__file__).parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+        print(f"✅ Loaded .env from {_env_path}")
+    else:
+        load_dotenv()   # fallback: search CWD and parent dirs
+        print("✅ load_dotenv() called (searching standard locations)")
+except ImportError:
+    print("⚠️  python-dotenv not installed — run: pip install python-dotenv")
+
 from components.auth import (
     create_token, create_user, get_connection,
     get_user_by_email, init_db, require_auth, verify_password,
@@ -23,6 +37,10 @@ from components.feature_transformer import apply_feature_operations, df_to_csv_b
 
 # ── Server-side Groq key (set GROQ_API_KEY in .env or environment) ─────────────
 _GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+if _GROQ_API_KEY:
+    print(f"✅ GROQ_API_KEY loaded ({len(_GROQ_API_KEY)} chars) — AI chat enabled")
+else:
+    print("⚠️  GROQ_API_KEY not found — check your .env file exists and contains GROQ_API_KEY=gsk_...")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -318,28 +336,27 @@ async def recommend_features(
 
 
 
+
 # ══════════════════════════════════════════════════════════════════════
-# AI CHAT ASSISTANT — Groq-powered dataset Q&A
+# AI CHAT ASSISTANT — Groq-powered dataset Q&A proxy
 # ══════════════════════════════════════════════════════════════════════
 
-GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_CHAT_MODEL = "llama-3.3-70b-versatile"
 
 @app.post("/chat")
 async def chat_with_data(
-    request:      Request,
-    messages_json: str = Form(...),     # JSON array of {role, content}
-    system_prompt: str = Form(""),      # context-rich system prompt from frontend
-    user_api_key:  str = Form(""),      # optional user-supplied key
+    messages_json: str  = Form(...),   # JSON array [{role, content}, ...]
+    system_prompt: str  = Form(""),    # context-rich system prompt from frontend
+    user_api_key:  str  = Form(""),    # optional key from browser session storage
     current_user:  dict = Depends(require_auth),
 ):
     """
-    Groq-powered chat endpoint for the dataset AI assistant.
-    Accepts conversation history + a context-rich system prompt built client-side.
-    Falls back to a helpful static response if no API key is configured.
+    Proxy chat messages to Groq. Uses server GROQ_API_KEY env var first,
+    then falls back to user-supplied key, then returns a helpful fallback message.
     """
-    groq_key = _GROQ_API_KEY or user_api_key.strip()
+    groq_key = (_GROQ_API_KEY or "").strip() or user_api_key.strip()
 
+    # Parse messages
     try:
         messages = json.loads(messages_json)
     except json.JSONDecodeError as e:
@@ -348,35 +365,33 @@ async def chat_with_data(
     if not isinstance(messages, list) or not messages:
         raise HTTPException(status_code=400, detail="messages must be a non-empty array.")
 
-    # Sanitise — only keep role/content, enforce alternating roles
-    clean_messages = []
-    for m in messages[-12:]:   # cap at last 12 turns
-        role    = m.get("role", "")
-        content = str(m.get("content", "")).strip()
-        if role in ("user", "assistant") and content:
-            clean_messages.append({"role": role, "content": content})
+    # Sanitise: keep only valid role/content pairs, last 12 turns max
+    clean_msgs = [
+        {"role": m["role"], "content": str(m.get("content", "")).strip()}
+        for m in messages[-12:]
+        if m.get("role") in ("user", "assistant") and str(m.get("content", "")).strip()
+    ]
+    if not clean_msgs:
+        raise HTTPException(status_code=400, detail="No valid messages after sanitisation.")
 
-    if not clean_messages:
-        raise HTTPException(status_code=400, detail="No valid messages found.")
-
-    # No API key → return a polite fallback
+    # No key → return helpful fallback (don't error out)
     if not groq_key:
-        last_user_msg = next(
-            (m["content"] for m in reversed(clean_messages) if m["role"] == "user"), ""
-        )
+        last_q = next((m["content"] for m in reversed(clean_msgs) if m["role"] == "user"), "")
         fallback = (
-            f"I can see you asked: \"{last_user_msg[:120]}\". "
-            "To enable AI-powered answers, add your **GROQ_API_KEY** to the `.env` file "
-            "and restart the server. You can get a free key at console.groq.com."
+            f"I received your question but the **GROQ_API_KEY** is not configured on the server. "
+            f"To enable AI-powered chat:\n\n"
+            f"1. Get a free key at https://console.groq.com\n"
+            f"2. Add `GROQ_API_KEY=your_key_here` to your `.env` file\n"
+            f"3. Restart the server\n\n"
+            f"Once configured, I'll be able to answer questions like: \"{last_q[:100]}\""
         )
         return {"reply": fallback, "mode": "fallback"}
 
-    # Build Groq payload
+    # Build payload for Groq
     groq_messages = []
     if system_prompt.strip():
-        # Groq uses a system message at position 0
         groq_messages.append({"role": "system", "content": system_prompt.strip()})
-    groq_messages.extend(clean_messages)
+    groq_messages.extend(clean_msgs)
 
     headers = {
         "Authorization": f"Bearer {groq_key}",
@@ -385,30 +400,41 @@ async def chat_with_data(
     payload = {
         "model":       GROQ_CHAT_MODEL,
         "messages":    groq_messages,
-        "max_tokens":  512,
+        "max_tokens":  600,
         "temperature": 0.5,
     }
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(GROQ_API_URL, headers=headers, json=payload)
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Groq API request timed out.")
+        raise HTTPException(status_code=504, detail="Groq API request timed out. Please try again.")
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Could not reach Groq API: {e}")
 
     if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="Invalid Groq API key.")
+        raise HTTPException(
+            status_code=401,
+            detail="Groq API key is invalid. Check GROQ_API_KEY in your .env file."
+        )
     if resp.status_code == 429:
-        raise HTTPException(status_code=429, detail="Groq rate limit reached. Please wait a moment.")
+        raise HTTPException(
+            status_code=429,
+            detail="Groq rate limit reached. Please wait a moment and try again."
+        )
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Groq error {resp.status_code}: {resp.text[:200]}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Groq returned error {resp.status_code}: {resp.text[:300]}"
+        )
 
     data  = resp.json()
     reply = data["choices"][0]["message"]["content"].strip()
     return {"reply": reply, "mode": "groq"}
-
-
 # ══════════════════════════════════════════════════════════════════════
 # APPLY SELECTED FEATURE ENGINEERING OPERATIONS
 # ══════════════════════════════════════════════════════════════════════
