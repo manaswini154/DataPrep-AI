@@ -6,3 +6,9 @@ openpyxl
 python-jose[cryptography]
 bcrypt
 httpx
+
+scikit-learn
+numpy
+beautifulsoup4
+lxml
+tenacity

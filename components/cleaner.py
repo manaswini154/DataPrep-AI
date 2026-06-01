@@ -14,6 +14,79 @@ def _normalize_col(col: str) -> str:
     return clean.strip("_")
 
 
+# ── Smart null-fill strategy ───────────────────────────────────────────────────
+
+# Cardinality threshold: if unique non-null values / total non-null rows <= this,
+# treat as categorical and use mode.
+_CATEGORICAL_RATIO = 0.05
+# Hard cap: even if ratio is low, more than this many distinct values = not categorical
+_CATEGORICAL_MAX_UNIQUE = 30
+# Minimum non-null samples needed to compute a meaningful mode/median
+_MIN_SAMPLES = 2
+
+# Regex patterns that suggest a column holds date-like text
+_DATE_PATTERNS = re.compile(
+    r"(\b\d{4}[-/]\d{2}[-/]\d{2}\b"   # 2024-01-15
+    r"|\b\d{2}[-/]\d{2}[-/]\d{4}\b"   # 15/01/2024
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b)",
+    re.IGNORECASE,
+)
+
+def _smart_fill(series: pd.Series) -> tuple[str, str]:
+    """
+    Analyse a Series and return (fill_value, human_readable_strategy).
+
+    Rules (in order):
+    1. Numeric        → median
+    2. Date-like text → "Not available"  (strategy: "date placeholder")
+    3. Categorical    → mode (most frequent value)
+    4. High-cardinality / free text → "Not specified"
+    """
+    non_null = series.dropna()
+
+    # ── 1. Numeric ──
+    if pd.api.types.is_numeric_dtype(series):
+        if len(non_null) >= _MIN_SAMPLES:
+            median_val = round(float(non_null.median()), 6)
+            mean_val   = round(float(non_null.mean()), 6)
+            return str(median_val), f"median ({median_val:g})  [mean: {mean_val:g}]"
+        return "0", "0 (no samples to compute median)"
+
+    # ── 2. Parse-able datetime column ──
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return "Not available", "date placeholder — no reliable date to impute"
+
+    # ── 3. String column ──
+    str_vals = non_null.astype(str)
+    n_total   = len(str_vals)
+
+    # Check if values look date-like
+    if n_total > 0:
+        sample = str_vals.iloc[:min(50, n_total)]
+        date_hits = sample.apply(lambda v: bool(_DATE_PATTERNS.search(v))).sum()
+        if date_hits / len(sample) > 0.5:
+            return "Not available", "date placeholder — column appears to contain dates"
+
+    # ── 4. Categorical vs free-text decision ──
+    n_unique = str_vals.nunique()
+    ratio    = n_unique / n_total if n_total > 0 else 1.0
+
+    if n_total >= _MIN_SAMPLES and n_unique <= _CATEGORICAL_MAX_UNIQUE and ratio <= _CATEGORICAL_RATIO:
+        mode_val   = str_vals.mode().iloc[0]
+        mode_count = int((str_vals == mode_val).sum())
+        pct        = round(mode_count / n_total * 100, 1)
+        return mode_val, (
+            f'most frequent value: "{mode_val}" '
+            f"({mode_count} of {n_total} rows, {pct}%)"
+        )
+
+    # ── 5. Free-text / high-cardinality ──
+    return "Not specified", (
+        f"free-text placeholder — {n_unique} unique values, "
+        f"no dominant category to impute"
+    )
+
+
 # ── AUTO CLEAN (existing feature) ──────────────────────────────────────────────
 
 def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -51,18 +124,22 @@ def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         whitespace_count += int((original != df[col]).sum())
     summary["whitespace_fixed"] = whitespace_count
 
-    # 4 & 5. Fill nulls
+    # 4 & 5. Fill nulls — smart strategy per column
     for col in df.columns:
         null_count = int(df[col].isna().sum())
         if null_count == 0:
             continue
+        fill_val, strategy = _smart_fill(df[col])
+        # cast fill_val to float for numeric columns
         if pd.api.types.is_numeric_dtype(df[col]):
-            median_val = df[col].median()
-            df[col] = df[col].fillna(median_val)
-            summary["nulls_filled"][col] = {"count": null_count, "method": f"median ({median_val:.4g})"}
+            try:
+                fill_val_typed = float(fill_val)
+            except ValueError:
+                fill_val_typed = fill_val
         else:
-            df[col] = df[col].fillna("Unknown")
-            summary["nulls_filled"][col] = {"count": null_count, "method": "Unknown"}
+            fill_val_typed = fill_val
+        df[col] = df[col].fillna(fill_val_typed)
+        summary["nulls_filled"][col] = {"count": null_count, "method": strategy}
 
     summary["final_rows"] = len(df)
     return df, summary
@@ -137,32 +214,20 @@ def analyze_dataframe(df: pd.DataFrame) -> dict:
     for col_idx, col in enumerate(norm_cols):
         is_numeric = pd.api.types.is_numeric_dtype(wdf[col])
 
-        # compute median once for numeric columns (ignoring NaN)
-        median_val = None
-        if is_numeric:
-            m = wdf[col].median()
-            if pd.notna(m):
-                median_val = round(float(m), 6)
+        # compute smart fill value & reason once per column (ignoring NaN)
+        fill_val, fill_reason = _smart_fill(wdf[col])
 
         for row_idx in range(len(wdf)):
             val = wdf.iloc[row_idx, col_idx]
 
             # Null fill
             if pd.isna(val):
-                if is_numeric and median_val is not None:
-                    changes.append({
-                        "id": cid, "type": "null_fill",
-                        "row": row_idx, "col": col_idx, "col_name": col,
-                        "old": "", "new": str(median_val),
-                        "reason": f"Fill missing with column median ({median_val})",
-                    })
-                else:
-                    changes.append({
-                        "id": cid, "type": "null_fill",
-                        "row": row_idx, "col": col_idx, "col_name": col,
-                        "old": "", "new": "Unknown",
-                        "reason": "Fill missing text value with 'Unknown'",
-                    })
+                changes.append({
+                    "id": cid, "type": "null_fill",
+                    "row": row_idx, "col": col_idx, "col_name": col,
+                    "old": "", "new": fill_val,
+                    "reason": f"Fill missing value → {fill_reason}",
+                })
                 cid += 1
                 continue
 

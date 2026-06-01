@@ -1,10 +1,7 @@
-# groq_summary.py — Groq LLM integration for DataPrep AI
-# Generates a detailed natural-language summary of cleaning changes.
-
 import httpx
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL        = "llama3-8b-8192"   # fast, free-tier friendly
+MODEL        = "llama-3.3-70b-versatile"   # fast, free-tier friendly
 
 
 def build_prompt(filename: str, summary: dict, changes: list[dict] | None = None) -> str:
@@ -16,6 +13,7 @@ def build_prompt(filename: str, summary: dict, changes: list[dict] | None = None
         f"You are a data quality analyst. A user just cleaned a file called '{filename}'.",
         "Write a clear, detailed summary of what was done to the data.",
         "Use plain English. Be specific with numbers. Use bullet points per category.",
+        "For null fills, mention the actual fill strategy used per column (e.g. median, mode, placeholder).",
         "End with a 1-sentence overall data quality verdict.",
         "",
         "=== CLEANING METADATA ===",
@@ -32,7 +30,7 @@ def build_prompt(filename: str, summary: dict, changes: list[dict] | None = None
         if nulls:
             lines.append(f"- Null values filled in {len(nulls)} column(s):")
             for col, info in nulls.items():
-                lines.append(f"    • '{col}': {info['count']} nulls filled using {info['method']}")
+                lines.append(f"    • '{col}': {info['count']} nulls — strategy: {info['method']}")
         renamed = summary.get("columns_renamed", {})
         if renamed:
             lines.append(f"- {len(renamed)} column(s) renamed to snake_case:")
